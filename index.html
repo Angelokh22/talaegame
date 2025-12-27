@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Investigation Hunt</title>
+  <style>
+    :root{
+      --bg:#0b1020; --txt:#e9eefc; --muted:#a9b4d6;
+      --acc:#7c5cff; --good:#2ee59d; --bad:#ff4d6d; --warn:#ffcc00;
+      --shadow: 0 12px 30px rgba(0,0,0,.35); --r:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background: radial-gradient(1100px 650px at 20% -10%, rgba(124,92,255,.35), transparent 60%),
+                  radial-gradient(900px 600px at 120% 10%, rgba(46,229,157,.18), transparent 50%),
+                  var(--bg);
+      color:var(--txt); min-height:100dvh;
+      padding: env(safe-area-inset-top) 14px env(safe-area-inset-bottom) 14px;
+      display:flex; justify-content:center;
+    }
+    .app{ width:min(560px, 100%); padding: 14px 0 30px; }
+    header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 4px 14px;}
+    .title{font-weight:900;font-size:18px}
+    .sub{color:var(--muted);font-size:12px}
+    .pill{font-size:12px;padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.12);color:var(--muted);display:flex;align-items:center;gap:8px;}
+    .dot{width:8px;height:8px;border-radius:999px;background:var(--warn);box-shadow:0 0 0 4px rgba(255,204,0,.12);}
+    .dot.good{background:var(--good);box-shadow:0 0 0 4px rgba(46,229,157,.14);}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border:1px solid rgba(255,255,255,.10);border-radius:var(--r);box-shadow:var(--shadow);padding:14px;}
+    .stack{display:flex;flex-direction:column;gap:12px;}
+    label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px;}
+    input,button{width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.12);
+      background:rgba(10,15,35,.65);color:var(--txt);padding:12px;font-size:15px;outline:none;}
+    button{background:linear-gradient(180deg, rgba(124,92,255,.95), rgba(124,92,255,.75));
+      border:1px solid rgba(255,255,255,.16);font-weight:800;cursor:pointer;}
+    button.secondary{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);font-weight:700;}
+    button.danger{background:linear-gradient(180deg, rgba(255,77,109,.95), rgba(255,77,109,.75));}
+    button:disabled{opacity:.45; cursor:not-allowed;}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+    .row > *{flex:1;min-width:160px;}
+    .msg{padding:10px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.12);
+      background:rgba(0,0,0,.20);color:var(--muted);line-height:1.35;font-size:13px;}
+    .msg.good{border-color:rgba(46,229,157,.35);background:rgba(46,229,157,.10);color:#c9ffe9;}
+    .msg.bad{border-color:rgba(255,77,109,.35);background:rgba(255,77,109,.10);color:#ffd0d8;}
+    .msg.warn{border-color:rgba(255,204,0,.35);background:rgba(255,204,0,.10);color:#fff2bf;}
+    .kpi{display:flex;gap:10px;flex-wrap:wrap;}
+    .mini{flex:1;min-width:140px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.09);
+      border-radius:16px;padding:10px;}
+    .big{font-size:18px;font-weight:900;}
+    .small{font-size:12px;color:var(--muted);margin-top:2px;}
+    .divider{height:1px;background:rgba(255,255,255,.10);margin:12px 0;}
+    .footerBtns{display:flex;gap:10px;}
+    .footerBtns>*{flex:1;}
+    .shake{animation:shake .28s linear 1;}
+    @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <div class="title">Investigation Hunt</div>
+        <div class="sub">Team A vs Team B • timer starts on login • hints unlock after 3 minutes per step</div>
+      </div>
+      <div class="pill">
+        <span class="dot" id="dot"></span>
+        <span id="status">Not logged in</span>
+      </div>
+    </header>
+
+    <main class="stack" id="root"></main>
+  </div>
+
+<script>
+/** EDIT LOGINS HERE */
+const CREDS = {
+  TEAM_A: { user:"team-a", pass:"2147", label:"Team A" },   
+  TEAM_B: { user:"team-b", pass:"8392", label:"Team B" },
+};
+
+const GAME_MINUTES = 20;
+const HINT_DELAY_MS = 3 * 60 * 1000; // 3 minutes per step
+
+const STEPS = [
+  { title:"Step 1 — Evidence Keyboard",
+    prompt:"Use the Evidence Keyboard + your Counting Rules card. Decode: 24–23–25–21. Enter the 4-letter word.",
+    answer:"CLUE",
+    hint:"If you got a different word, re-check how the counting works (direction matters)." },
+  { title:"Step 2 — QR #1", prompt:"Find QR #1 hidden in the room. Scan it or type the word written on it.",
+    answer:"LANTERN", hint:"Hide it near something that gives light." },
+  { title:"Step 3 — Investigator Note Riddle",
+    prompt:"Solve the riddle on the ‘INVESTIGATOR’S NOTE’ paper: “I have keys but open no locks…”",
+    answer:"KEYBOARD", hint:"You type on it." },
+  { title:"Step 4 — Odd One Out",
+    prompt:"Find the odd-one-out sheet. Enter the number under the odd symbol.",
+    answer:"417", hint:"The odd symbol has the code under it." },
+  { title:"Step 5 — Silent Challenge",
+    prompt:"Find the silent challenge card. Complete it. Enter the code on the back.",
+    answer:"MOTION", hint:"It’s written on the back of the card." },
+  { title:"Step 6 — QR #2 Riddle",
+    prompt:"Find QR #2. Solve: “The more you take, the more you leave behind.”",
+    answer:"FOOTSTEPS", hint:"Walking leaves them." },
+  { title:"Final — Close the Case",
+    prompt:"Open the final envelope and enter the final phrase.",
+    answer:"CASE CLOSED", hint:"Two words." },
+];
+
+const LS = "investigation_hunt_v2";
+const now = ()=> Date.now();
+const norm = s => (s||"").toString().trim().toUpperCase().replace(/\s+/g," ");
+const esc = s => (s||"").toString().replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+
+let state = load() || { session:null, adminUnlocked:false };
+
+let timerInterval = null;
+
+const root = document.getElementById("root");
+const status = document.getElementById("status");
+const dot = document.getElementById("dot");
+
+function load(){ try{ return JSON.parse(localStorage.getItem(LS)); }catch(e){ return null; } }
+function save(){ localStorage.setItem(LS, JSON.stringify(state)); }
+
+function setStatus(role){
+  if(!role){ status.textContent="Not logged in"; dot.className="dot"; return; }
+  status.textContent = CREDS[role]?.label || role;
+  dot.className="dot good";
+}
+
+function toast(text, kind=""){
+  const t = document.createElement("div");
+  t.className = `msg ${kind}`;
+  t.style.position="fixed"; t.style.left="14px"; t.style.right="14px"; t.style.bottom="18px";
+  t.style.zIndex=9999; t.style.boxShadow="0 10px 24px rgba(0,0,0,.35)";
+  t.style.transform="translateY(10px)"; t.style.opacity="0"; t.style.transition="all .18s ease";
+  t.innerHTML = esc(text);
+  document.body.appendChild(t);
+  requestAnimationFrame(()=>{ t.style.opacity="1"; t.style.transform="translateY(0)"; });
+  setTimeout(()=>{ t.style.opacity="0"; t.style.transform="translateY(10px)"; setTimeout(()=>t.remove(),200); }, 1700);
+}
+
+function clearTimerInterval(){
+  if(timerInterval){ clearInterval(timerInterval); timerInterval = null; }
+}
+
+function msToClock(ms){
+  const m = Math.floor(ms/60000);
+  const s = Math.floor((ms%60000)/1000);
+  return `${m}:${String(s).padStart(2,"0")}`;
+}
+
+function startLiveTimerUpdates(){
+  clearTimerInterval();
+  timerInterval = setInterval(()=>{
+    const sess = state.session;
+    if(!sess) return;
+    const left = Math.max(0, (sess.startedAt + GAME_MINUTES*60*1000) - now());
+    const timerEl = document.getElementById("timerText");
+    if(timerEl) timerEl.textContent = `${msToClock(left)} left`;
+
+    // Hint countdown
+    const hintEl = document.getElementById("hintCountdown");
+    const hintBtn = document.getElementById("hintBtn");
+    if(hintEl && hintBtn){
+      const sinceStep = now() - sess.stepStartedAt;
+      const remaining = Math.max(0, HINT_DELAY_MS - sinceStep);
+      if(remaining === 0){
+        hintEl.textContent = "Hint unlocked";
+        hintBtn.disabled = false;
+      }else{
+        hintEl.textContent = `Hint unlocks in ${msToClock(remaining)}`;
+        hintBtn.disabled = true;
+      }
+    }
+  }, 250);
+}
+
+function render(){
+    state.adminUnlocked = !!state.adminUnlocked;
+
+  clearTimerInterval();
+  root.innerHTML = "";
+
+  if(!state.session){
+    setStatus(null);
+    root.appendChild(loginCard());
+    root.appendChild(infoCard());
+    return;
+  }
+
+  setStatus(state.session.role);
+ root.appendChild(gameCard());
+
+if(state.session.adminUnlocked){
+  root.appendChild(deviceCard());
+} else {
+  root.appendChild(adminUnlockCard());
+}
+
+}
+
+function adminUnlockCard(){
+  const d = document.createElement("div");
+  d.className = "card stack";
+  d.innerHTML = `
+    <div style="font-weight:900;font-size:16px;">Admin locked</div>
+    <div class="msg">Type <b>admin</b> to unlock device controls and logout (this session only).</div>
+    <div>
+      <label>Admin code</label>
+      <input id="adminCode" placeholder="Enter admin code">
+    </div>
+    <div class="footerBtns">
+      <button class="secondary" id="unlockBtn">Unlock</button>
+      <button class="secondary" id="lockBtn" disabled>Locked</button>
+    </div>
+  `;
+
+  d.querySelector("#unlockBtn").onclick = ()=>{
+    const val = (d.querySelector("#adminCode").value || "").trim().toLowerCase();
+    if(val === "admin"){
+      state.session.adminUnlocked = true;
+      save();
+      toast("Admin unlocked.", "good");
+      render();
+    } else {
+      toast("Wrong admin code.", "bad");
+      d.querySelector("#adminCode").value = "";
+    }
+  };
+
+  return d;
+}
+
+
+function loginCard(){
+  const d = document.createElement("div");
+  d.className = "card stack";
+  d.innerHTML = `
+    <div style="font-weight:900;font-size:16px;">Login</div>
+    <div class="row">
+      <div>
+        <label>Username</label>
+        <input id="u" placeholder="team-a / team-b" autocomplete="off" autocapitalize="none">
+      </div>
+      <div>
+        <label>Password</label>
+        <input id="p" placeholder="****" type="password" autocomplete="off">
+      </div>
+    </div>
+    <button id="go">Enter (starts timer)</button>
+    <div class="msg warn">No backend. Use game codes only (not real passwords).</div>
+  `;
+  d.querySelector("#go").onclick = ()=>{
+    const u = d.querySelector("#u").value.trim().toLowerCase();
+    const p = d.querySelector("#p").value.trim();
+    const role = Object.keys(CREDS).find(k => CREDS[k].user===u && CREDS[k].pass===p);
+    if(!role){
+      d.classList.remove("shake"); void d.offsetWidth; d.classList.add("shake");
+      toast("Wrong credentials.", "bad");
+      return;
+    }
+    const t = now();
+    state.session = { role, startedAt:t, step:0, stepStartedAt:t, hints:0, hintUsedSteps: [], adminUnlocked: false };
+    save();
+    toast("Timer started. Go!", "good");
+    render();
+  };
+  return d;
+}
+
+function infoCard(){
+  const d = document.createElement("div");
+  d.className = "card stack";
+  d.innerHTML = `
+    <div style="font-weight:900;font-size:16px;">How it works</div>
+    <div class="msg">
+      Enter answers to unlock the next step.<br>
+      <b>Hints unlock 3 minutes after each step begins</b> (keeps the pace and tension).
+    </div>
+  `;
+  return d;
+}
+
+function gameCard(){
+  const s = state.session;
+
+  // Make sure hintUsedSteps exists (in case old sessions are loaded from localStorage)
+  s.hintUsedSteps = s.hintUsedSteps || [];
+
+  const stepIdx = Math.min(Math.max(s.step,0), STEPS.length-1);
+  const st = STEPS[stepIdx];
+
+  const leftMs = Math.max(0, (s.startedAt + GAME_MINUTES*60*1000) - now());
+
+  const sinceStep = now() - s.stepStartedAt;
+  const hintUnlocked = sinceStep >= HINT_DELAY_MS;
+  const hintRemaining = Math.max(0, HINT_DELAY_MS - sinceStep);
+
+  const alreadyUsedHintThisStep = s.hintUsedSteps.includes(stepIdx);
+
+  const d = document.createElement("div");
+  d.className = "card stack";
+  d.innerHTML = `
+    <div class="kpi">
+      <div class="mini">
+        <div class="big">${CREDS[s.role].label}</div>
+        <div class="small">Session running</div>
+      </div>
+      <div class="mini">
+        <div class="big" id="timerText">${msToClock(leftMs)} left</div>
+        <div class="small">Total time: ${GAME_MINUTES} minutes</div>
+      </div>
+      <div class="mini">
+        <div class="big">Step ${stepIdx+1} / ${STEPS.length}</div>
+        <div class="small">Hints used: ${s.hints}</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div style="font-weight:900;font-size:16px;">${esc(st.title)}</div>
+    <div class="msg">${esc(st.prompt)}</div>
+
+    <div>
+      <label>Answer</label>
+      <input id="ans" placeholder="Type your answer">
+    </div>
+
+    <div class="footerBtns">
+      <button id="submit">${stepIdx===STEPS.length-1 ? "Finish" : "Submit"}</button>
+      <button class="secondary" id="hintBtn"
+        ${(!hintUnlocked || alreadyUsedHintThisStep) ? "disabled" : ""}>
+        ${alreadyUsedHintThisStep ? "Hint Shown" : "Show Hint"}
+      </button>
+    </div>
+
+    <div class="msg ${hintUnlocked ? "good" : "warn"}" id="hintCountdown">
+      ${hintUnlocked ? (alreadyUsedHintThisStep ? "Hint used for this step" : "Hint unlocked")
+                     : `Hint unlocks in ${msToClock(hintRemaining)}`}
+    </div>
+
+    <div class="msg" id="hintBox" style="display:${alreadyUsedHintThisStep ? "block" : "none"};">
+      ${alreadyUsedHintThisStep ? esc(st.hint) : ""}
+    </div>
+
+    <div class="footerBtns">
+     <button class="danger" id="logout" ${s.adminUnlocked ? "" : "disabled"}>Log out</button>
+
+
+    </div>
+  `;
+
+ d.querySelector("#logout").onclick = ()=>{
+  if(!state.session.adminUnlocked){
+    toast("Admin locked.", "warn");
+    return;
+  }
+  state.session = null;
+  save();
+  render();
+};
+
+
+
+  d.querySelector("#hintBtn").onclick = ()=>{
+    // Re-check at click time (no stale values)
+    const sinceStepNow = now() - state.session.stepStartedAt;
+    const unlockedNow = sinceStepNow >= HINT_DELAY_MS;
+
+    if(!unlockedNow){
+      const remaining = Math.max(0, HINT_DELAY_MS - sinceStepNow);
+      toast(`Hint is still locked. ${msToClock(remaining)} remaining.`, "warn");
+      return;
+    }
+
+    // If already used this step, do nothing (and DO NOT count again)
+    state.session.hintUsedSteps = state.session.hintUsedSteps || [];
+    if(state.session.hintUsedSteps.includes(stepIdx)){
+      return;
+    }
+
+    // Mark used + increment once
+    state.session.hints++;
+    state.session.hintUsedSteps.push(stepIdx);
+    save();
+
+    // Show hint permanently on screen (this step)
+    const hintBox = d.querySelector("#hintBox");
+    hintBox.style.display = "block";
+    hintBox.innerHTML = esc(st.hint);
+
+    // Disable button so they can't spam-click
+    const hintBtn = d.querySelector("#hintBtn");
+    hintBtn.disabled = true;
+    hintBtn.textContent = "Hint Shown";
+
+    // Update countdown label too
+    const hintCountdown = d.querySelector("#hintCountdown");
+    hintCountdown.className = "msg good";
+    hintCountdown.textContent = "Hint used for this step";
+  };
+
+  d.querySelector("#submit").onclick = ()=>{
+    const input = norm(d.querySelector("#ans").value);
+    const expected = norm(st.answer);
+
+    if(input !== expected){
+      d.classList.remove("shake"); void d.offsetWidth; d.classList.add("shake");
+      toast("Wrong — double-check spelling or the clue.", "bad");
+      return;
+    }
+
+    if(stepIdx === STEPS.length-1){
+      clearTimerInterval();
+      root.innerHTML = `
+        <div class="card stack">
+          <div style="font-weight:1000;font-size:22px;text-align:center;">✅ CASE CLOSED</div>
+          <div class="msg good">Show this screen to the Investigator.</div>
+          <button class="secondary" onclick="location.reload()">Restart</button>
+        </div>
+      `;
+      return;
+    }
+
+    // Next step: reset per-step hint lock timer (and hint will be unused for next step)
+    state.session.step++;
+    state.session.stepStartedAt = now();
+    save();
+    toast("Correct ✅ Next step unlocked.", "good");
+    render();
+  };
+
+  return d;
+}
+
+
+function deviceCard(){
+  const d = document.createElement("div");
+  d.className = "card stack";
+  d.innerHTML = `
+    <div style="font-weight:900;font-size:16px;">Device controls</div>
+    <div class="msg">If you need to restart a team on this phone, use reset.</div>
+    <div class="footerBtns">
+      <button class="secondary" id="reset">Reset session (this phone)</button>
+      <button class="secondary" id="back">Back to login</button>
+    </div>
+  `;
+  d.querySelector("#reset").onclick = ()=>{
+    if(!state.session) return;
+    const t = now();
+    state.session.startedAt = t;
+    state.session.step = 0;
+    state.session.stepStartedAt = t;
+    state.session.hints = 0;
+    state.session.hintUsedSteps = [];
+    state.session.adminUnlocked = false;
+
+    save();
+    toast("Reset done (timer restarted).", "warn");
+    render();
+  };
+  d.querySelector("#back").onclick = ()=>{
+    state.session = null;
+    save();
+    render();
+  };
+  return d;
+}
+
+render();
+</script>
+</body>
+</html>
