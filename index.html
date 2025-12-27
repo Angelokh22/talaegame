@@ -77,7 +77,7 @@
 <script>
 /** EDIT LOGINS HERE */
 const CREDS = {
-  TEAM_A: { user:"team-a", pass:"2147", label:"Team A" },   
+  TEAM_A: { user:"team-a", pass:"2147", label:"Team A" },
   TEAM_B: { user:"team-b", pass:"8392", label:"Team B" },
 };
 
@@ -157,6 +157,7 @@ function startLiveTimerUpdates(){
   timerInterval = setInterval(()=>{
     const sess = state.session;
     if(!sess) return;
+
     const left = Math.max(0, (sess.startedAt + GAME_MINUTES*60*1000) - now());
     const timerEl = document.getElementById("timerText");
     if(timerEl) timerEl.textContent = `${msToClock(left)} left`;
@@ -179,7 +180,7 @@ function startLiveTimerUpdates(){
 }
 
 function render(){
-    state.adminUnlocked = !!state.adminUnlocked;
+  state.adminUnlocked = !!state.adminUnlocked;
 
   clearTimerInterval();
   root.innerHTML = "";
@@ -192,14 +193,16 @@ function render(){
   }
 
   setStatus(state.session.role);
- root.appendChild(gameCard());
+  root.appendChild(gameCard());
 
-if(state.session.adminUnlocked){
-  root.appendChild(deviceCard());
-} else {
-  root.appendChild(adminUnlockCard());
-}
+  // ✅ FIX: start live countdown updates whenever game UI is shown
+  startLiveTimerUpdates();
 
+  if(state.session.adminUnlocked){
+    root.appendChild(deviceCard());
+  } else {
+    root.appendChild(adminUnlockCard());
+  }
 }
 
 function adminUnlockCard(){
@@ -234,7 +237,6 @@ function adminUnlockCard(){
   return d;
 }
 
-
 function loginCard(){
   const d = document.createElement("div");
   d.className = "card stack";
@@ -251,6 +253,7 @@ function loginCard(){
       </div>
     </div>
     <button id="go">Enter (starts timer)</button>
+    <div class="msg warn">No backend. Use game codes only (not real passwords).</div>
   `;
   d.querySelector("#go").onclick = ()=>{
     const u = d.querySelector("#u").value.trim().toLowerCase();
@@ -346,23 +349,19 @@ function gameCard(){
     </div>
 
     <div class="footerBtns">
-     <button class="danger" id="logout" ${s.adminUnlocked ? "" : "disabled"}>Log out</button>
-
-
+      <button class="danger" id="logout" ${s.adminUnlocked ? "" : "disabled"}>Log out</button>
     </div>
   `;
 
- d.querySelector("#logout").onclick = ()=>{
-  if(!state.session.adminUnlocked){
-    toast("Admin locked.", "warn");
-    return;
-  }
-  state.session = null;
-  save();
-  render();
-};
-
-
+  d.querySelector("#logout").onclick = ()=>{
+    if(!state.session.adminUnlocked){
+      toast("Admin locked.", "warn");
+      return;
+    }
+    state.session = null;
+    save();
+    render();
+  };
 
   d.querySelector("#hintBtn").onclick = ()=>{
     // Re-check at click time (no stale values)
@@ -435,7 +434,6 @@ function gameCard(){
   return d;
 }
 
-
 function deviceCard(){
   const d = document.createElement("div");
   d.className = "card stack";
@@ -469,8 +467,14 @@ function deviceCard(){
   return d;
 }
 
+// ✅ Optional: if the user switches tabs, resume timer updates cleanly
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible" && state.session){
+    startLiveTimerUpdates();
+  }
+});
+
 render();
 </script>
 </body>
 </html>
-
